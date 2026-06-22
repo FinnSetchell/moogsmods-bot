@@ -39,7 +39,7 @@ async function handleRelease(request, env) {
   });
 
   const msg = await discordRequest(env, 'POST', `/channels/${env.CHANNEL_REVIEW}/messages`, {
-    embeds: [buildPreviewEmbed(release)],
+    embeds: buildPreviewEmbeds(release),
     components: [approveRejectGroupRow(releaseId)],
   });
 
@@ -81,10 +81,12 @@ async function handleButton(interaction, env) {
     const release = await getRelease(env, releaseId);
     if (!release) return ephemeral('Release data expired.');
 
-    await sendAnnouncement(env, release);
+    const dryRun = release.dryRun === true;
+    await sendAnnouncement(env, release, dryRun ? env.CHANNEL_REVIEW : null);
+    const destination = dryRun ? '#announcement-review (dry run)' : channelLabel(release.releaseType);
     await discordRequest(env, 'PATCH', `/channels/${channelId}/messages/${messageId}`, {
       components: [],
-      embeds: [withFooter(origEmbed, `✅ Approved — sent to ${channelLabel(release.releaseType)}`)],
+      embeds: [withFooter(origEmbed, `✅ Approved — sent to ${destination}`)],
     });
     await cleanupRelease(env, releaseId);
     return Response.json({ type: 6 });
@@ -107,7 +109,10 @@ async function handleButton(interaction, env) {
     await env.RELEASES.put(`grouped:${releaseId}`, JSON.stringify({ channelId, messageId }), {
       expirationTtl: 60 * 60 * 24 * 30,
     });
-    const count = await getGroupedCount(env);
+    const ids = await getGroupedIds(env);
+    if (!ids.includes(releaseId)) ids.push(releaseId);
+    await env.RELEASES.put('grouped_ids', JSON.stringify(ids), { expirationTtl: 60 * 60 * 24 * 30 });
+    const count = ids.length;
 
     // Update this message to show "Grouped ✓ | Ungroup"
     await discordRequest(env, 'PATCH', `/channels/${channelId}/messages/${messageId}`, {
@@ -124,13 +129,59 @@ async function handleButton(interaction, env) {
   if (customId.startsWith('ungroup:')) {
     const releaseId = customId.slice(8);
     await env.RELEASES.delete(`grouped:${releaseId}`);
-    const count = await getGroupedCount(env);
+    const ids = (await getGroupedIds(env)).filter(id => id !== releaseId);
+    await env.RELEASES.put('grouped_ids', JSON.stringify(ids), { expirationTtl: 60 * 60 * 24 * 30 });
+    const count = ids.length;
 
     await discordRequest(env, 'PATCH', `/channels/${channelId}/messages/${messageId}`, {
       components: [approveRejectGroupRow(releaseId)],
       embeds: [withoutFooter(origEmbed)],
     });
     await syncSendGroupedMessage(env, count);
+    return Response.json({ type: 6 });
+  }
+
+  // ungroup_all
+  if (customId === 'ungroup_all') {
+    const ids = await getGroupedIds(env);
+    await Promise.all(ids.map(async id => {
+      const infoStr = await env.RELEASES.get(`grouped:${id}`);
+      if (infoStr) {
+        const { channelId: cId, messageId: mId } = JSON.parse(infoStr);
+        const release = await getRelease(env, id);
+        const embed = release ? buildPreviewEmbed(release) : {};
+        await discordRequest(env, 'PATCH', `/channels/${cId}/messages/${mId}`, {
+          components: [approveRejectGroupRow(id)],
+          embeds: [withoutFooter(embed)],
+        }).catch(() => {});
+      }
+      await env.RELEASES.delete(`grouped:${id}`);
+    }));
+    await env.RELEASES.delete('grouped_ids');
+    await discordRequest(env, 'DELETE', `/channels/${channelId}/messages/${messageId}`, null).catch(() => {});
+    return Response.json({ type: 6 });
+  }
+
+  // reject_grouped
+  if (customId === 'reject_grouped') {
+    const ids = await getGroupedIds(env);
+    await Promise.all(ids.map(async id => {
+      const infoStr = await env.RELEASES.get(`grouped:${id}`);
+      if (infoStr) {
+        const { channelId: cId, messageId: mId } = JSON.parse(infoStr);
+        const release = await getRelease(env, id);
+        const embed = release ? buildPreviewEmbed(release) : {};
+        await discordRequest(env, 'PATCH', `/channels/${cId}/messages/${mId}`, {
+          components: [],
+          embeds: [withFooter(embed, '❌ Rejected (grouped)')],
+        }).catch(() => {});
+      }
+      await env.RELEASES.delete(`grouped:${id}`);
+      await env.RELEASES.delete(`release:${id}`);
+    }));
+    await env.RELEASES.delete('grouped_ids');
+    // Delete the trigger message itself
+    await discordRequest(env, 'DELETE', `/channels/${channelId}/messages/${messageId}`, null).catch(() => {});
     return Response.json({ type: 6 });
   }
 
@@ -156,23 +207,24 @@ async function handleModal(interaction, env) {
   const releaseType = get('release_type').toLowerCase().trim() || 'major';
   const changelog   = get('changelog');
 
-  const groupedKeys = (await env.RELEASES.list({ prefix: 'grouped:' })).keys;
-  if (groupedKeys.length === 0) return ephemeral('No grouped releases found in KV.');
+  const groupedIds = await getGroupedIds(env);
+  if (groupedIds.length === 0) return ephemeral('No grouped releases found in KV.');
 
-  const firstId = groupedKeys[0].name.replace('grouped:', '');
-  const firstRelease = await getRelease(env, firstId);
+  const firstRelease = await getRelease(env, groupedIds[0]);
   if (!firstRelease) return ephemeral('Release data expired.');
 
   const [mcStart, mcEnd] = mcRange.includes(' - ')
     ? mcRange.split(' - ').map(s => s.trim())
     : [mcRange.trim(), mcRange.trim()];
 
-  await sendAnnouncement(env, { ...firstRelease, modName, version, mcStart, mcEnd, releaseType, changelog });
+  const mcVersions = valid.map(r => r.mcVersion).sort();
+  const mergedRelease = { ...firstRelease, modName, version, mcStart, mcEnd, releaseType, changelog, mcVersions };
+  const dryRun = mergedRelease.dryRun === true;
+  await sendAnnouncement(env, mergedRelease, dryRun ? env.CHANNEL_REVIEW : null);
 
   // Mark all grouped preview messages as sent and clean up
   await Promise.all(
-    groupedKeys.map(async key => {
-      const id = key.name.replace('grouped:', '');
+    groupedIds.map(async id => {
       const infoStr = await env.RELEASES.get(`grouped:${id}`);
       if (infoStr) {
         const { channelId, messageId } = JSON.parse(infoStr);
@@ -187,6 +239,7 @@ async function handleModal(interaction, env) {
       await env.RELEASES.delete(`release:${id}`);
     })
   );
+  await env.RELEASES.delete('grouped_ids');
 
   // Delete the "Send Grouped" trigger message
   const sendMsgStr = await env.RELEASES.get('grouped_send_msg');
@@ -204,9 +257,9 @@ async function handleModal(interaction, env) {
 
 // ─── Grouped-release helpers ─────────────────────────────────────────────────
 
-async function getGroupedCount(env) {
-  const list = await env.RELEASES.list({ prefix: 'grouped:' });
-  return list.keys.length;
+async function getGroupedIds(env) {
+  const data = await env.RELEASES.get('grouped_ids');
+  return data ? JSON.parse(data) : [];
 }
 
 async function syncSendGroupedMessage(env, count) {
@@ -224,7 +277,11 @@ async function syncSendGroupedMessage(env, count) {
 
   const components = [{
     type: 1,
-    components: [{ type: 2, style: 1, label: `📤 Send Grouped (${count})`, custom_id: 'send_grouped' }],
+    components: [
+      { type: 2, style: 1, label: `📤 Send Grouped (${count})`, custom_id: 'send_grouped' },
+      { type: 2, style: 4, label: 'Reject All', custom_id: 'reject_grouped', emoji: { id: '1115379522754322583', name: 'no' } },
+      { type: 2, style: 2, label: '🔗 Ungroup All', custom_id: 'ungroup_all' },
+    ],
   }];
 
   if (existing) {
@@ -248,20 +305,19 @@ async function syncSendGroupedMessage(env, count) {
 }
 
 async function openGroupedModal(env) {
-  const keys = (await env.RELEASES.list({ prefix: 'grouped:' })).keys;
+  const keys = await getGroupedIds(env);
   if (keys.length < 2) return ephemeral('Need at least 2 grouped releases to send.');
 
-  const releases = await Promise.all(
-    keys.map(k => getRelease(env, k.name.replace('grouped:', '')))
-  );
+  const releases = await Promise.all(keys.map(id => getRelease(env, id)));
   const valid = releases.filter(Boolean);
   if (valid.length === 0) return ephemeral('All release data expired.');
 
-  const mcStarts = valid.map(r => r.mcStart).sort();
-  const mcEnds   = valid.map(r => r.mcEnd).sort();
-  const mcRange  = mcStarts[0] === mcEnds[mcEnds.length - 1]
+  const mcStarts   = valid.map(r => r.mcStart).sort();
+  const allEnds    = valid.flatMap(r => [r.mcEnd, ...(r.mcExtra ?? [])]).sort();
+  const overallEnd = allEnds[allEnds.length - 1];
+  const mcRange    = mcStarts[0] === overallEnd
     ? mcStarts[0]
-    : `${mcStarts[0]} - ${mcEnds[mcEnds.length - 1]}`;
+    : `${mcStarts[0]} - ${overallEnd}`;
   const first = valid[0];
 
   return Response.json({
@@ -282,25 +338,29 @@ async function openGroupedModal(env) {
 
 // ─── Announcement builder ────────────────────────────────────────────────────
 
-async function sendAnnouncement(env, release) {
-  const targetChannel = targetChannelId(env, release.releaseType);
+async function sendAnnouncement(env, release, channelOverride = null) {
+  const targetChannel = channelOverride ?? targetChannelId(env, release.releaseType);
   const role          = releaseRoleId(env, release.releaseType);
   const color         = hexColor(release.color ?? '#c20045');
   const cfSlug        = release.cfSlug ?? 'mns-moogs-nether-structures';
   const mrSlug        = release.mrSlug ?? 'mns-moogs-nether-structures';
   const gridUrl       = `https://www.curseforge.com/minecraft/mc-mods/${cfSlug}`;
   const imageUrls     = release.imageUrls ?? [];
-  const versionsStr   = versionRange(release.mcStart, release.mcEnd);
+  const versionsStr   = versionRange(release.mcStart, release.mcEnd, release.mcExtra ?? []);
   const isAlpha       = release.releaseType === 'alpha';
 
   const header = isAlpha
     ? `🧪 **${release.modName} ${release.version}** alpha build is up for testing!`
     : `🎉 **${release.modName} ${release.version}** has been released!`;
 
+  const jarLines = (release.mcVersions && release.mcVersions.length > 1)
+    ? release.mcVersions.map(v => `**${release.displayPrefix} ${release.version}-${v} ${release.displaySuffix}**`).join('\n')
+    : `**${release.displayPrefix} ${release.version}-${release.mcVersion} ${release.displaySuffix}**`;
+
   const description = [
     `## ${header}`,
     '',
-    `**${release.displayPrefix} ${release.version}-${release.mcVersion} ${release.displaySuffix}**`,
+    jarLines,
     `Versions - ${versionsStr}`,
     '',
     `### 📝 **Changelog:**`,
@@ -332,13 +392,15 @@ async function sendAnnouncement(env, release) {
 
 // ─── Preview embed ───────────────────────────────────────────────────────────
 
-function buildPreviewEmbed(release) {
+function buildPreviewEmbeds(release) {
   const color       = hexColor(release.color ?? '#c20045');
-  const versionsStr = versionRange(release.mcStart, release.mcEnd);
+  const versionsStr = versionRange(release.mcStart, release.mcEnd, release.mcExtra ?? []);
   const isAlpha     = release.releaseType === 'alpha';
   const typeIcon    = isAlpha ? '🧪' : '🎉';
+  const imageUrls   = (release.imageUrls ?? []).slice(0, 4);
+  const gridUrl     = `https://www.curseforge.com/minecraft/mc-mods/${release.cfSlug ?? 'mns-moogs-nether-structures'}`;
 
-  return {
+  const main = {
     title: `[PREVIEW] ${release.modName} ${release.version}`,
     description: [
       `${typeIcon} **${release.modName} ${release.version}** — ${versionsStr}`,
@@ -349,6 +411,20 @@ function buildPreviewEmbed(release) {
     thumbnail: { url: release.thumbnailUrl },
     footer: { text: `→ ${channelLabel(release.releaseType)} | ${release.project ?? ''} | ${release.releaseType}` },
   };
+
+  if (imageUrls.length > 0) {
+    main.url = gridUrl;
+    main.image = { url: imageUrls[0] };
+  }
+
+  return [
+    main,
+    ...imageUrls.slice(1).map(u => ({ url: gridUrl, image: { url: u }, color })),
+  ];
+}
+
+function buildPreviewEmbed(release) {
+  return buildPreviewEmbeds(release)[0];
 }
 
 // ─── Component builders ───────────────────────────────────────────────────────
@@ -358,7 +434,7 @@ function approveRejectGroupRow(releaseId) {
     type: 1,
     components: [
       { type: 2, style: 3, label: 'Approve', custom_id: `approve:${releaseId}`, emoji: { name: '✅' } },
-      { type: 2, style: 4, label: 'Reject',  custom_id: `reject:${releaseId}`,  emoji: { name: '❌' } },
+      { type: 2, style: 4, label: 'Reject',  custom_id: `reject:${releaseId}`,  emoji: { id: '1115379522754322583', name: 'no' } },
       { type: 2, style: 2, label: 'Group',   custom_id: `group:${releaseId}`,   emoji: { name: '🔗' } },
     ],
   };
@@ -484,8 +560,9 @@ function hexColor(hex) {
   return parseInt(hex.replace('#', ''), 16);
 }
 
-function versionRange(start, end) {
-  return start === end ? start : `${start} - ${end}`;
+function versionRange(start, end, extra = []) {
+  const base = start === end ? start : `${start} - ${end}`;
+  return extra.length > 0 ? `${base}, ${extra.join(', ')}` : base;
 }
 
 function withFooter(embed, text) {
