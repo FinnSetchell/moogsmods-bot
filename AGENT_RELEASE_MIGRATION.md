@@ -319,8 +319,8 @@ Fully migrated OLD-flow → central Worker flow (replaced `release.yml`, added `
 - `FinnSetchell/MoogsSoaringStructures` (branch `1.20-datapack`)
 - `FinnSetchell/MoogsTemplesReimagined` (branch `1.21-datapack`)
 - `Moog-s-Mods/MoogsVoyagerStructures` (branch `1.21-datapack`)
+- `FinnSetchell/MoogsVoyagerStructures-Integrated` (branch `1.21-datapack`) — `WORKER_API_KEY` secret added; `validate: true`, no configPack (no config pack); `modrinthProjectSlug=mvsi-moogs-voyager-structures-integrated` (resolved from Modrinth project ID `cbWB9PF5`)
 
 > Still on the OLD self-contained flow (discord block is LIVE — needs full workflow migration, not just block removal):
-> - `FinnSetchell/MoogsVoyagerStructures-Integrated` (`1.21-datapack`) — blocked: repo is missing the `WORKER_API_KEY` secret. Set it, then migrate like the others.
 > - `FinnSetchell/MoogsStructureLib` (`wip/forge-port`) — out of scope: it's a library, not a structure mod (no `publish*`/`discord*`/slug keys); the announcement pipeline doesn't apply.
 > - `ClientGlowTrims` — out of scope: no `release.yml` at all, multiloader layout; would need a release workflow designed from scratch.
