@@ -6,7 +6,62 @@ This session worked across several repos in `C:\Users\finn\IdeaProjects\`. The u
 
 ---
 
-## Current Status: All Done
+## Current Status: Publish-verification system built — NOT yet deployed
+
+A two-layer cross-mod publish-verification system was built this session and
+validated locally (all 9 mods pass; audit returns 0 issues on current versions).
+**Nothing is committed, pushed, or deployed yet** — see the go-live checklist below.
+
+### What it does
+Confirms every release lands on Modrinth + CurseForge for each loader/MC version
+and alerts Discord on a miss. Two layers:
+- **Workflow-time verify** — a `verify` job in the central `publish.yml` runs after
+  publish (even if publish fails mid-way), checks the just-published tag, posts to
+  the bot's `/verify-alert`, and fails the run on a real miss.
+- **Scheduled audit** — a 6h cron (`audit.yml` in this repo) verifies the **latest
+  release per MC line** of every registry mod and posts to `/audit-alert`. Scoped to
+  current versions only (strays + history ignored) — its job is catching async CF
+  moderation rejection of a fresh release.
+
+### Components
+| File | Repo | Role |
+|---|---|---|
+| `registry.json` | moogsmods-bot | 9 mods: Modrinth/CF IDs + slugs |
+| `verify/verifier.py` | release-actions | stdlib lib: query both platforms, classify, verdict |
+| `verify/verify_publish.py` | release-actions | CI entry for one tag → `/verify-alert` |
+| `verify/audit.py` | release-actions | cron entry, latest-per-line → `/audit-alert` |
+| `verify/README.md` | release-actions | architecture + "add a mod" doc |
+| `.github/workflows/verify.yml` | release-actions | reusable `@v1`; called by `publish.yml` |
+| `.github/workflows/audit.yml` | moogsmods-bot | 6h cron + manual dispatch |
+| `/verify-alert`, `/audit-alert` + embeds | moogsmods-bot `src/index.js` | Discord presentation + channel routing |
+
+### Key design facts (non-obvious)
+- **No skip-guard ever existed** — the brief's premise was wrong; `publishMods` runs
+  unconditionally. Verify-and-alert is the safety net.
+- **CurseForge needs NO API key** — uses the website-internal API
+  (`www.curseforge.com/api/v1/mods/{id}/files`), **with `removeAlphas=false`** (else
+  alphas are hidden). Public API lists approved files only, so a rejected file reads
+  as "missing" (still flagged).
+- **Modrinth ships the same version_number once per MC line** — the checker accepts
+  the best-covering version (don't match the first).
+- **Alpha is read from the tag** (`-alpha.N`), not gradle.properties.
+- Left alone per user: `mvs 1.0.4` (stray release, no jars) and `mmr 1.0.1`
+  (published as alpha, tagged as release). Backfill descoped — only latest matters.
+
+### Go-live checklist (all pending user approval)
+1. **release-actions:** commit `verify/*` + `.github/workflows/verify.yml` + modified
+   `publish.yml`; then **move the `v1` tag** → turns verify on for every mod at once.
+2. **moogsmods-bot:** commit `registry.json`, `.github/workflows/audit.yml`,
+   `src/index.js`, `wrangler.toml`; **deploy the Worker** (classifier-gated).
+3. Add **`WORKER_API_KEY`** as a GitHub Actions secret in moogsmods-bot (for `audit.yml`).
+4. *Optional:* create `#release-audit`/`#alpha-audit`, set `CHANNEL_AUDIT_RELEASE` /
+   `CHANNEL_AUDIT_ALPHA` in `wrangler.toml` (else both fall back to mod-log).
+5. *Optional:* `AUDIT_GITHUB_TOKEN` PAT if any mod repo is private (public → default token OK).
+6. After v1 move, run `audit.yml` manually (dry-run) to confirm the lib loads from `@v1`.
+
+---
+
+## Prior session: release-flow migration (All Done)
 
 **Moog's Mineshafts Reimagined (MMR)** 1.0.3 (1.21.x) and 1.0.2 (1.20.x) released successfully. GitHub Releases created, Discord announcement sent, version bump committed.
 
