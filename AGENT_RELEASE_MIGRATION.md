@@ -312,4 +312,15 @@ Pattern A (central) repos — `build.gradle` `discord {}` block + `discordPrevie
 - `MoogsTemplesReimagined` (branch `1.20-datapack`)
 - `MoogsVoyagerStructures` (branch `1.20-datapack`)
 
-> Still on the OLD self-contained flow (discord block is LIVE — needs full workflow migration, not just block removal): the `*_1_20` / `-1.20-datapack` 1.20 siblings of the above, plus `MoogsTemplesReimagined-1.21-datapack`, `MoogsVoyagerStructures-1.21-datapack`, `MoogsVoyagerStructures-Integrated`, `MoogsStructureLib` (`wip/forge-port`), and `ClientGlowTrims` (no `release.yml`).
+Fully migrated OLD-flow → central Worker flow (replaced `release.yml`, added `publish.yml`, removed discord block, added `modrinthProjectSlug`) (2026-06-26):
+- `FinnSetchell/MoogsBountifulStructures` (branch `1.20-datapack`)
+- `FinnSetchell/MoogsEndStructures` (branch `1.20-datapack`)
+- `FinnSetchell/MoogsMissingVillages` (branch `1.20-datapack`)
+- `FinnSetchell/MoogsSoaringStructures` (branch `1.20-datapack`)
+- `FinnSetchell/MoogsTemplesReimagined` (branch `1.21-datapack`)
+- `Moog-s-Mods/MoogsVoyagerStructures` (branch `1.21-datapack`)
+
+> Still on the OLD self-contained flow (discord block is LIVE — needs full workflow migration, not just block removal):
+> - `FinnSetchell/MoogsVoyagerStructures-Integrated` (`1.21-datapack`) — blocked: repo is missing the `WORKER_API_KEY` secret. Set it, then migrate like the others.
+> - `FinnSetchell/MoogsStructureLib` (`wip/forge-port`) — out of scope: it's a library, not a structure mod (no `publish*`/`discord*`/slug keys); the announcement pipeline doesn't apply.
+> - `ClientGlowTrims` — out of scope: no `release.yml` at all, multiloader layout; would need a release workflow designed from scratch.
