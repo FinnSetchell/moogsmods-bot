@@ -1,0 +1,72 @@
+{
+  "_about": "Mod registry — single source of truth for publish verification + audit. Consumed by the scheduled audit (release-actions/verify), which has NO local checkout of these repos and discovers tags + per-tag publish metadata via the GitHub API. The per-tag verify.yml reads each mod's own gradle.properties at the tag ref, so it does NOT depend on this file. JSON (not YAML) so the stdlib-only Python verifier can parse it with no deps. To add a mod: append one entry here + add the verify.yml call to that repo's release.yml (see ONBOARDING).",
+  "defaults": {
+    "platforms": ["fabric", "forge", "neoforge"],
+    "tag_pattern": "^v?(?P<version>\\d+\\.\\d+\\.\\d+(?:-alpha\\.\\d+)?)-(?P<mc>.+)$"
+  },
+  "mods": [
+    {
+      "key": "mns",
+      "name": "MoogsNetherStructures",
+      "repo": "FinnSetchell/MoogsNetherStructures2",
+      "modrinth": { "id": "nGUXvjTa", "slug": "mns-moogs-nether-structures" },
+      "curseforge": { "id": 967466, "slug": "mns-moogs-nether-structures" }
+    },
+    {
+      "key": "mvs",
+      "name": "MoogsVoyagerStructures",
+      "repo": "Moog-s-Mods/MoogsVoyagerStructures",
+      "modrinth": { "id": "OQAgZMH1", "slug": "moogs-voyager-structures" },
+      "curseforge": { "id": 656977, "slug": "moogs-voyager-structures" }
+    },
+    {
+      "key": "mes",
+      "name": "MoogsEndStructures",
+      "repo": "FinnSetchell/MoogsEndStructures",
+      "modrinth": { "id": "r4PuRGfV", "slug": "moogs-end-structures" },
+      "curseforge": { "id": 892382, "slug": "moogs-end-structures" }
+    },
+    {
+      "key": "mss",
+      "name": "MoogsSoaringStructures",
+      "repo": "FinnSetchell/MoogsSoaringStructures",
+      "modrinth": { "id": "RJCLIx7k", "slug": "mss-moogs-soaring-structures" },
+      "curseforge": { "id": 1040210, "slug": "mss-moogs-soaring-structures" }
+    },
+    {
+      "key": "mmr",
+      "name": "MoogsMineshaftsReimagined",
+      "repo": "FinnSetchell/MoogsMineshaftsReimagined",
+      "modrinth": { "id": "z25hqseO", "slug": "moogs-mineshafts-reimagined" },
+      "curseforge": { "id": 1570795, "slug": "mmr-moogs-mineshafts-reimagined" }
+    },
+    {
+      "key": "mtr",
+      "name": "MoogsTemplesReimagined",
+      "repo": "FinnSetchell/MoogsTemplesReimagined",
+      "modrinth": { "id": "UNanzCXS", "slug": "mtr-moogs-temples-reimagined" },
+      "curseforge": { "id": 1339737, "slug": "mtr-moogs-temples-reimagined" }
+    },
+    {
+      "key": "mbs",
+      "name": "MoogsBountifulStructures",
+      "repo": "FinnSetchell/MoogsBountifulStructures",
+      "modrinth": { "id": "Qnb1HbfK", "slug": "mbs-moogs-bountiful-structures" },
+      "curseforge": { "id": 1499680, "slug": "mbs-moogs-bountiful-structures" }
+    },
+    {
+      "key": "mmv",
+      "name": "MoogsMissingVillages",
+      "repo": "FinnSetchell/MoogsMissingVillages",
+      "modrinth": { "id": "spZb29SD", "slug": "mmv-moogs-missing-villages" },
+      "curseforge": { "id": 1153951, "slug": "mmv-moogs-missing-villages" }
+    },
+    {
+      "key": "mvsintegrated",
+      "name": "MoogsVoyagerStructuresIntegrated",
+      "repo": "FinnSetchell/MoogsVoyagerStructures-Integrated",
+      "modrinth": { "id": "cbWB9PF5", "slug": "mvsi-moogs-voyager-structures-integrated" },
+      "curseforge": { "id": 1542803, "slug": "mvsi-moogs-voyager-structures-integrated" }
+    }
+  ]
+}

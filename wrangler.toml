@@ -16,3 +16,10 @@ CHANNEL_ALPHA     = "1511015064201723945"
 ROLE_MAJOR        = "930949661970284594"
 ROLE_MINOR        = "1466012771379581039"
 ROLE_ALPHA        = "1509203215629946961"
+# Publish-verification audit channels. If unset, both fall back to the mod-log
+# channel. Set these to dedicated channel IDs to split alpha vs release alerts.
+# CHANNEL_AUDIT_RELEASE = "..."
+# CHANNEL_AUDIT_ALPHA   = "..."
+
+[triggers]
+crons = ["* * * * *"]

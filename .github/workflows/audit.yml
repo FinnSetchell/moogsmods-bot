@@ -1,0 +1,49 @@
+name: Publish audit
+
+# Scheduled cross-mod publish verification. Walks registry.json, lists each mod's
+# GitHub releases, reads gradle.properties at each tag, verifies Modrinth +
+# CurseForge, and POSTs failures to the bot's /audit-alert. Lives here in the bot
+# repo (next to registry.json) and checks out release-actions for the verifier lib.
+#
+# Requires a repo secret WORKER_API_KEY (the bot's X-API-Key). The default
+# GITHUB_TOKEN can read public repos' releases + contents; if any mod repo is
+# private, add a PAT secret AUDIT_GITHUB_TOKEN with read access.
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print results without posting to Discord'
+        type: boolean
+        default: false
+
+jobs:
+  audit:
+    name: Verify all published releases
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout bot repo (registry.json)
+        uses: actions/checkout@v4
+
+      - name: Checkout verification library
+        uses: actions/checkout@v4
+        with:
+          repository: FinnSetchell/release-actions
+          ref: v1
+          path: .verify-lib
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run audit
+        env:
+          REGISTRY: registry.json
+          WORKER_URL: https://moogsmods-bot.finndog176.workers.dev
+          WORKER_API_KEY: ${{ secrets.WORKER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: python .verify-lib/verify/audit.py
