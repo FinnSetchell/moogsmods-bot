@@ -22,7 +22,7 @@ function unauthorized(request, env) {
 }
 
 export default {
-  // Runs every minute (wrangler.toml cron) to fire any due scheduled releases.
+  // Runs every 30 min (wrangler.toml cron) to fire any due scheduled releases.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(processScheduledReleases(env));
   },

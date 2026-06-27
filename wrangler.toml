@@ -21,5 +21,7 @@ ROLE_ALPHA        = "1509203215629946961"
 # CHANNEL_AUDIT_RELEASE = "..."
 # CHANNEL_AUDIT_ALPHA   = "..."
 
+# Every 30 min: scheduled releases only need half-hour granularity, and this keeps
+# both cron invocations and the KV index lookups well within the free tier.
 [triggers]
-crons = ["* * * * *"]
+crons = ["*/30 * * * *"]

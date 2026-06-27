@@ -371,8 +371,8 @@ export async function handleModal(interaction, env, ctx) {
       JSON.stringify({ ...updatedRelease, scheduledAt }),
       { expirationTtl: secs + 3600 },
     );
-    // Register in the index so the per-minute cron checks one cheap `get`
-    // instead of running a `list` every minute (saves the free-tier list budget).
+    // Register in the index so the cron checks one cheap `get` instead of
+    // running a `list` every run (saves the free-tier list budget).
     await addScheduledToIndex(env, releaseId, scheduledAt);
 
     // Update review card

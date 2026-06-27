@@ -218,12 +218,12 @@ export async function openGroupedModal(env) {
   });
 }
 
-// ── Scheduled release processor (runs every minute via the cron trigger) ───────
+// ── Scheduled release processor (runs every 30 min via the cron trigger) ───────
 
 // We keep a single `scheduled_index` key — an array of { id, scheduledAt } — so
-// the per-minute cron can do ONE cheap KV `get` to check whether anything is due.
-// A `list` per minute would burn ~1,440 ops/day against the free-tier list budget
-// (only 1,000/day); a `get` draws from the 100,000/day read budget instead.
+// the cron can do ONE cheap KV `get` to check whether anything is due. A `list`
+// every run would draw on the scarce free-tier list budget (1,000/day); a `get`
+// draws from the 100,000/day read budget instead.
 
 // Record (or refresh) a scheduled release in the index. Called when scheduling.
 export async function addScheduledToIndex(env, id, scheduledAt) {
