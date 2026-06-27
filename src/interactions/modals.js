@@ -12,6 +12,7 @@ import {
 import { buildPreviewEmbed } from '../components.js';
 import {
   getRelease, cleanupRelease, getGroupedIds, triggerPublish, sendAnnouncement,
+  addScheduledToIndex,
 } from '../releases.js';
 import { timeoutMember, purgeUserMessages } from '../moderation.js';
 
@@ -370,6 +371,9 @@ export async function handleModal(interaction, env, ctx) {
       JSON.stringify({ ...updatedRelease, scheduledAt }),
       { expirationTtl: secs + 3600 },
     );
+    // Register in the index so the per-minute cron checks one cheap `get`
+    // instead of running a `list` every minute (saves the free-tier list budget).
+    await addScheduledToIndex(env, releaseId, scheduledAt);
 
     // Update review card
     await discordRequest(env, 'PATCH',

@@ -220,27 +220,59 @@ export async function openGroupedModal(env) {
 
 // ── Scheduled release processor (runs every minute via the cron trigger) ───────
 
+// We keep a single `scheduled_index` key — an array of { id, scheduledAt } — so
+// the per-minute cron can do ONE cheap KV `get` to check whether anything is due.
+// A `list` per minute would burn ~1,440 ops/day against the free-tier list budget
+// (only 1,000/day); a `get` draws from the 100,000/day read budget instead.
+
+// Record (or refresh) a scheduled release in the index. Called when scheduling.
+export async function addScheduledToIndex(env, id, scheduledAt) {
+  const raw = await env.RELEASES.get('scheduled_index');
+  let index = [];
+  if (raw) {
+    try { index = JSON.parse(raw); } catch { index = []; }
+  }
+  index = index.filter(e => e.id !== id);
+  index.push({ id, scheduledAt });
+  await env.RELEASES.put('scheduled_index', JSON.stringify(index));
+}
+
 export async function processScheduledReleases(env) {
-  const list = await env.RELEASES.list({ prefix: 'scheduled:' });
-  for (const key of list.keys) {
+  const raw = await env.RELEASES.get('scheduled_index');
+  if (!raw) return;
+  let index;
+  try { index = JSON.parse(raw); } catch { return; }
+  if (!Array.isArray(index) || index.length === 0) return;
+
+  const now = Date.now();
+  const stillPending = [];
+
+  for (const entry of index) {
+    if (entry.scheduledAt > now) { stillPending.push(entry); continue; }
     try {
-      const data = await env.RELEASES.get(key.name);
-      if (!data) continue;
+      const data = await env.RELEASES.get(`scheduled:${entry.id}`);
+      if (!data) continue; // expired or already handled — drop from the index
       const release = JSON.parse(data);
-      if (release.scheduledAt <= Date.now()) {
-        const releaseId = key.name.slice('scheduled:'.length);
-        await triggerPublish(env, release, releaseId);
-        await env.RELEASES.delete(key.name);
-        // Update review card
-        await discordRequest(env, 'PATCH',
-          `/channels/${release.reviewChannelId}/messages/${release.reviewMessageId}`, {
-            embeds: [withFooter(buildPreviewEmbed(release), '✅ Scheduled publish triggered')],
-            components: [],
-          }).catch(() => {});
-      }
+      await triggerPublish(env, release, entry.id);
+      await env.RELEASES.delete(`scheduled:${entry.id}`);
+      // Update review card
+      await discordRequest(env, 'PATCH',
+        `/channels/${release.reviewChannelId}/messages/${release.reviewMessageId}`, {
+          embeds: [withFooter(buildPreviewEmbed(release), '✅ Scheduled publish triggered')],
+          components: [],
+        }).catch(() => {});
     } catch (err) {
-      console.error('processScheduledReleases error for', key.name, err);
+      console.error('processScheduledReleases error for', entry.id, err);
+      stillPending.push(entry); // retry on the next run
     }
+  }
+
+  // Nothing changed → skip the write to save a KV op.
+  if (stillPending.length === index.length) return;
+  if (stillPending.length) {
+    await env.RELEASES.put('scheduled_index', JSON.stringify(stillPending));
+  } else {
+    await env.RELEASES.delete('scheduled_index');
   }
 }
 
